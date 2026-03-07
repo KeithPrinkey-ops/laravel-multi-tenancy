@@ -13,7 +13,11 @@ class SetTenant
     {
         if ($user = $request->user()) {
             /** @var \Illuminate\Database\Eloquent\Model $user */
-            $tenant = Tenant::where('user_id', $user->id)->first();
+            if (!($user instanceof \Illuminate\Database\Eloquent\Model)) {
+                return $this->handleError($request, $action, 'Invalid user model');
+            }
+
+            $tenant = Tenant::where('user_id', $user->getKey())->first();
 
             if ($tenant) {
                 try {

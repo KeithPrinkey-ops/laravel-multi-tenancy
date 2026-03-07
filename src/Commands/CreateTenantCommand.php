@@ -11,14 +11,17 @@ use Worldesports\MultiTenancy\Models\TenantDatabase;
 class CreateTenantCommand extends Command
 {
     public $signature = 'tenant:create
-                        {user_id : The user ID to assign the tenant to}
+                        {user_id : The user ID to associate with the tenant}
                         {name : The tenant name}
+                        {--domain= : Domain for automatic email-based detection (e.g., company.com)}
+                        {--subdomain= : Subdomain for automatic URL-based detection (e.g., client1)}
                         {--db-name= : Database name for the tenant}
                         {--db-host=127.0.0.1 : Database host (not required for SQLite)}
                         {--db-port= : Database port (defaults: MySQL=3306, PostgreSQL=5432, SQL Server=1433)}
                         {--db-username= : Database username (not required for SQLite)}
                         {--db-password= : Database password (not required for SQLite)}
                         {--db-driver=mysql : Database driver (mysql, pgsql, sqlite, sqlsrv)}
+                        {--primary : Mark the database as primary for this tenant}
                         {--create-db : Create the database if it doesn\'t exist}';
 
     public $description = 'Create a new tenant with database connection';
@@ -54,12 +57,14 @@ class CreateTenantCommand extends Command
         $dbPort = $this->option('db-port');
         if (!$dbPort) {
             $dbPort = match($dbDriver) {
-                'pgsql' => '5432',
-                'sqlsrv' => '1433',
-                'mysql' => '3306',
+                'pgsql' => 5432,
+                'sqlsrv' => 1433,
+                'mysql' => 3306,
                 'sqlite' => null,
-                default => '3306'
+                default => 3306
             };
+        } else {
+            $dbPort = (int) $dbPort;
         }
 
         // Driver-specific validation
@@ -117,21 +122,23 @@ class CreateTenantCommand extends Command
         }
 
         try {
-            // Create database if requested
-            if ($this->option('create-db')) {
+            // Create database if requested (skip for SQLite)
+            if ($this->option('create-db') && $dbDriver !== 'sqlite') {
                 $this->info('Creating database...');
-                $this->createDatabase($dbHost, $dbPort, $dbUsername, $dbPassword, $dbName, $dbDriver);
+                $this->createDatabase($dbHost, $dbPort ?? 3306, $dbUsername, $dbPassword, $dbName, $dbDriver);
             }
 
             // Test connection
             $this->info('Testing database connection...');
-            $this->testConnection($dbHost, $dbPort, $dbUsername, $dbPassword, $dbName, $dbDriver);
+            $this->testConnection($dbHost, $dbPort ?? 3306, $dbUsername, $dbPassword, $dbName, $dbDriver);
 
             // Create tenant
             $this->info('Creating tenant...');
             $tenant = Tenant::create([
                 'user_id' => $userId,
                 'name' => $tenantName,
+                'domain' => $this->option('domain'),
+                'subdomain' => $this->option('subdomain'),
             ]);
 
             // Create tenant database with driver-specific connection details
@@ -171,6 +178,7 @@ class CreateTenantCommand extends Command
                 'tenant_id' => $tenant->id,
                 'name' => $dbName,
                 'connection_details' => $connectionDetails,
+                'is_primary' => $this->option('primary') ?: true, // Default to primary if it's the first database
             ]);
 
             $this->info("✅ Tenant '{$tenantName}' created successfully!");
@@ -217,6 +225,10 @@ class CreateTenantCommand extends Command
         $pdo->query('SELECT 1');
     }
 
+    /**
+     * Validate database connection
+     * @used
+     */
     private function validateDatabaseConnection(array $connectionDetails): bool
     {
         try {
@@ -235,6 +247,10 @@ class CreateTenantCommand extends Command
         }
     }
 
+    /**
+     * Validate database name format
+     * @used
+     */
     private function validateDatabaseName(string $dbName): bool
     {
         // Validate database name format
@@ -253,21 +269,4 @@ class CreateTenantCommand extends Command
         return true;
     }
 
-    private function checkDatabaseExists(array $connectionDetails): bool
-    {
-        try {
-            $dsn = "{$connectionDetails['driver']}:host={$connectionDetails['host']};port={$connectionDetails['port']}";
-            $pdo = new \PDO($dsn, $connectionDetails['username'], $connectionDetails['password']);
-            $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-
-            $stmt = $pdo->prepare('SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?');
-            $stmt->execute([$connectionDetails['database']]);
-
-            return $stmt->rowCount() > 0;
-        } catch (\PDOException $e) {
-            $this->error("❌ Failed to check database existence: {$e->getMessage()}");
-
-            return false;
-        }
-    }
 }

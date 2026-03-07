@@ -77,7 +77,8 @@ class MultiTenancyCommand extends Command
         $rows = [];
 
         foreach ($tenants as $tenant) {
-            $userName = $tenant->user ? $tenant->user->name : 'N/A';
+            $user = $tenant->user;
+            $userName = $user ? ($user->getAttribute('name') ?? 'N/A') : 'N/A';
             $rows[] = [
                 $tenant->id,
                 $tenant->name,
@@ -109,7 +110,10 @@ class MultiTenancyCommand extends Command
         $this->line("User ID: {$tenant->user_id}");
 
         if ($tenant->user) {
-            $this->line("User: {$tenant->user->name} ({$tenant->user->email})");
+            $user = $tenant->user;
+            $userName = $user->getAttribute('name') ?? 'N/A';
+            $userEmail = $user->getAttribute('email') ?? 'N/A';
+            $this->line("User: {$userName} ({$userEmail})");
         }
 
         $this->line("Created: {$tenant->created_at->format('Y-m-d H:i:s')}");
@@ -142,7 +146,7 @@ class MultiTenancyCommand extends Command
 
             foreach ($tenant->databases as $database) {
                 $totalTests++;
-                $this->line("  • {$database->name}... ", false);
+                $this->line("  • {$database->name}... ", null);
 
                 try {
                     $connectionName = MultiTenancy::setTenantDatabaseConnection($database);

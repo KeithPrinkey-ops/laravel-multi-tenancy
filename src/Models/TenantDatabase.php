@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $id
  * @property int $tenant_id
  * @property string $name
+ * @property bool $is_primary
  * @property array $connection_details
  * @property Carbon $created_at
  * @property Carbon $updated_at
@@ -27,6 +28,7 @@ class TenantDatabase extends Model
 
     protected $casts = [
         'connection_details' => 'array',
+        'is_primary' => 'boolean',
     ];
 
     protected $hidden = [

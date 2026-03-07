@@ -1,9 +1,9 @@
 # Laravel Multi-Tenancy Package
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/worldesports/multi-tenancy.svg?style=flat-square)](https://packagist.org/packages/worldesports/multi-tenancy)
-[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/worldesports/multi-tenancy/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/worldesports/multi-tenancy/actions?query=workflow%3Arun-tests+branch%3Amain)
-[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/worldesports/multi-tenancy/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/worldesports/multi-tenancy/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
-[![Total Downloads](https://img.shields.io/packagist/dt/worldesports/multi-tenancy.svg?style=flat-square)](https://packagist.org/packages/worldesports/multi-tenancy)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/keithprinkey-ops/laravel-auto-tenancy.svg?style=flat-square)](https://packagist.org/packages/worldesports/multi-tenancy)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/keithprinkey-ops/laravel-multi-tenancy/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/keithprinkey-ops/laravel-multi-tenancy/actions?query=workflow%3Arun-tests+branch%3Amain)
+[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/keithprinkey-ops/laravel-multi-tenancy/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/keithprinkey-ops/laravel-multi-tenancy/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
+[![Total Downloads](https://img.shields.io/packagist/dt/keithprinkey-ops/laravel-auto-tenancy.svg?style=flat-square)](https://packagist.org/packages/keithprinkey-ops/laravel-auto-tenancy/stats)
 
 A Laravel package that enables **post-authentication multi-tenancy** for any Laravel application. Simply install the package and your Laravel app becomes multi-tenant with automatic tenant detection and database switching.
 
@@ -331,22 +331,63 @@ MultiTenancy::purgeConnections();
 
 ### Automatic Tenant Detection
 
-The package automatically detects and switches to the user's tenant upon login. No manual configuration required!
+The package provides **multiple automatic tenant detection strategies** - no manual user mapping required!
 
-When a user logs in (through **any authentication system**):
-1. The package looks up their tenant record
-2. Automatically switches to the tenant's database connection
-3. All subsequent queries use the tenant database
+When a user logs in, the package tries these detection methods **in order**:
 
-**Works with any authentication flow:**
-- 📱 **Web login forms** (Breeze, Jetstream)
-- 🔗 **Social media login** (Google, Facebook, GitHub via Socialite)  
-- 🔑 **API token authentication** (Sanctum)
-- 🎫 **SSO/SAML authentication**
-- 🔐 **Custom authentication systems**
-- 👥 **Multi-guard authentication**
+#### **🎯 Strategy 1: Email Domain Detection**
+Users are automatically mapped to tenants based on their email domain:
 
-The package listens to Laravel's standard `Login` event, so it works regardless of how the user authenticates.
+```bash
+# Create tenant for a company
+php artisan tenant:create 1 "ACME Corporation" --domain=acme.com
+
+# When user registers with alice@acme.com, they're automatically assigned to ACME tenant
+# When user registers with bob@acme.com, they're also assigned to ACME tenant
+```
+
+**Configuration:**
+```env
+MULTI_TENANT_AUTO_DETECT_EMAIL=true  # Default: enabled
+```
+
+#### **🎯 Strategy 2: Subdomain Detection**
+Tenants detected by subdomain in the URL:
+
+```bash
+# Create tenant with subdomain
+php artisan tenant:create 2 "Client Portal" --subdomain=client1
+
+# When users visit client1.yourapp.com, they automatically use Client Portal tenant
+# When users visit client2.yourapp.com, they use a different tenant
+```
+
+**Configuration:**
+```env
+MULTI_TENANT_AUTO_DETECT_SUBDOMAIN=true  # Default: disabled
+```
+
+#### **🎯 Strategy 3: Auto-Create Tenants**
+Automatically create tenants for new users:
+
+```bash
+# No tenant setup required - tenants created automatically on first login
+```
+
+**Configuration:**
+```env
+MULTI_TENANT_AUTO_CREATE=true       # Auto-create tenants
+MULTI_TENANT_AUTO_CREATE_DB=true    # Also create databases automatically
+```
+
+#### **🎯 Strategy 4: Manual Mapping (Fallback)**
+Direct user-to-tenant assignment:
+
+```bash
+php artisan tenant:create 123 "Manual Tenant"  # User ID 123 gets this tenant
+```
+
+**The beauty: You can mix and match these strategies!**
 
 ### Using the Middleware
 
@@ -441,7 +482,37 @@ class Order extends Model
 }
 ```
 
-## Authentication Integration Examples
+## Multi-User & Concurrent Session Support
+
+### **✅ Multiple Users, Different Tenants**
+Each user session maintains its own tenant context:
+
+```php
+// User A logs in (alice@acme.com) → automatically uses ACME tenant database
+// User B logs in (bob@widget.com) → automatically uses Widget tenant database  
+// User C logs in (carol@acme.com) → automatically uses ACME tenant database
+
+// All three users can be using the app simultaneously with different tenant databases!
+```
+
+### **✅ Session Isolation**
+- Each user's session maintains independent tenant context
+- No interference between concurrent users
+- Thread-safe tenant switching
+- Automatic cleanup on logout
+
+### **✅ API & Web Support**
+```php
+// Web users (sessions)
+Route::middleware(['auth:web', SetTenant::class])->group(function () {
+    // Each web session gets its tenant context
+});
+
+// API users (tokens) 
+Route::middleware(['auth:sanctum', SetTenant::class])->group(function () {
+    // Each API request gets tenant context based on the authenticated user
+});
+```
 
 ### Example 1: Social Media Authentication with Multi-Tenancy
 

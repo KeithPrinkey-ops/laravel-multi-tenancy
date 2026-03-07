@@ -16,24 +16,30 @@ class CreateTenantOnRegistration
 
         $user = $event->user;
 
+        /** @var \Illuminate\Database\Eloquent\Model $user */
+        if (!($user instanceof \Illuminate\Database\Eloquent\Model)) {
+            return;
+        }
+
         // Check if tenant already exists
-        if (Tenant::where('user_id', $user->id)->exists()) {
+        if (Tenant::where('user_id', $user->getKey())->exists()) {
             return;
         }
 
         try {
             // Create tenant with default name
-            $tenantName = config('multi-tenancy.default_tenant_name', 'Tenant for '.$user->name);
+            $userName = $user->getAttribute('name') ?? 'User';
+            $tenantName = config('multi-tenancy.default_tenant_name', 'Tenant for '.$userName);
 
             Tenant::create([
-                'user_id' => $user->id,
+                'user_id' => $user->getKey(),
                 'name' => $tenantName,
             ]);
 
-            \Log::info("Auto-created tenant for user: {$user->id}");
+            \Log::info("Auto-created tenant for user: {$user->getKey()}");
 
         } catch (\Exception $e) {
-            \Log::error("Failed to auto-create tenant for user {$user->id}: {$e->getMessage()}");
+            \Log::error("Failed to auto-create tenant for user {$user->getKey()}: {$e->getMessage()}");
         }
     }
 }

@@ -11,7 +11,7 @@ return [
     | This should be set to your application's User model class.
     |
     */
-    'user_model' => env('MULTI_TENANT_USER_MODEL', 'App\\Models\\User'),
+    'user_model' => 'App\\Models\\User',
 
     /*
     |--------------------------------------------------------------------------
@@ -22,60 +22,71 @@ return [
     | and when no tenant is active.
     |
     */
-    'main_connection' => env('DB_CONNECTION', 'mysql'),
+    'main_connection' => config('database.default', 'mysql'),
 
     /*
     |--------------------------------------------------------------------------
-    | Auto Create Tenant
+    | Automatic Tenant Detection
     |--------------------------------------------------------------------------
     |
-    | Whether to automatically create a tenant when a user registers.
-    | This requires the CreateTenantOnRegistration listener to be enabled.
+    | Configure how tenants are automatically detected when users log in.
     |
     */
-    'auto_create_tenant' => env('MULTI_TENANT_AUTO_CREATE', false),
+
+    // Auto-detect tenant by email domain (user@company.com -> Company tenant)
+    'auto_detect_by_email' => true,
+
+    // Auto-detect tenant by subdomain (tenant1.app.com -> tenant1)
+    'auto_detect_by_subdomain' => false,
+
+    // Auto-create tenant for users without existing tenant
+    'auto_create_tenant' => false,
+
+    // Auto-create database when creating tenant
+    'auto_create_database' => false,
 
     /*
     |--------------------------------------------------------------------------
-    | Default Tenant Name
+    | Default Tenant Configuration
     |--------------------------------------------------------------------------
     |
-    | The default name format for auto-created tenants.
-    | You can use :name placeholder which will be replaced with user's name.
+    | Settings for automatically created tenants.
     |
     */
     'default_tenant_name' => 'Tenant for :name',
 
     /*
     |--------------------------------------------------------------------------
-    | Connection Cache
+    | Subdomain Configuration
     |--------------------------------------------------------------------------
     |
-    | Whether to cache database connections to improve performance.
-    | Recommended to keep enabled unless debugging connection issues.
+    | Configuration for subdomain-based tenant detection.
     |
     */
-    'cache_connections' => env('MULTI_TENANT_CACHE_CONNECTIONS', true),
+    'subdomain' => [
+        'excluded' => ['www', 'app', 'api', 'admin'], // Subdomains to ignore
+    ],
 
     /*
     |--------------------------------------------------------------------------
-    | Encryption
+    | Performance Settings
     |--------------------------------------------------------------------------
     |
-    | Whether to encrypt sensitive connection details in the database.
-    | This adds security but may impact performance slightly.
+    | Configuration for performance optimizations.
     |
     */
-    'encrypt_connection_details' => env('MULTI_TENANT_ENCRYPT', false),
+    'cache_connections' => true,
 
     /*
     |--------------------------------------------------------------------------
-    | Security
+    | Security Settings
     |--------------------------------------------------------------------------
     |
     | Security-related configurations.
     |
     */
+    'encrypt_connection_details' => false,
+
     'security' => [
         'check_user_tenant_access' => true, // Verify user has access to tenant
         'log_tenant_switches' => true, // Log when tenants are switched

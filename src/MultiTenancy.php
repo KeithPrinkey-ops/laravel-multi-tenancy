@@ -30,7 +30,7 @@ class MultiTenancy
         $this->tenant = $tenant;
         $this->tenantId = $tenant->id;
 
-        $defaultDatabase = $tenant->databases()->first();
+        $defaultDatabase = $tenant->primaryDatabase();
         if ($defaultDatabase) {
             $this->setTenantDatabaseConnection($defaultDatabase);
             $this->switchToTenantConnection();
@@ -70,7 +70,7 @@ class MultiTenancy
         }
 
         $config = [
-            'driver' => $connectionDetails['driver'] ?? 'mysql',
+            'driver' => $connectionDetails['driver'],
         ];
 
         // Driver-specific configuration
@@ -119,8 +119,11 @@ class MultiTenancy
         Config::set("database.connections.$connectionName", $config);
 
         // Purge existing connection if it exists
-        if (DB::getConnection($connectionName)) {
+        try {
+            DB::connection($connectionName);
             DB::purge($connectionName);
+        } catch (\Exception $e) {
+            // Connection doesn't exist yet, which is fine
         }
 
         // Cache the connection
@@ -174,10 +177,13 @@ class MultiTenancy
             return [];
         }
 
-        return $this->tenant->databases()
+        /** @var \Illuminate\Database\Eloquent\Collection<int, \Worldesports\MultiTenancy\Models\TenantDatabase> $databases */
+        $databases = $this->tenant->databases()
             ->with('metadata')
-            ->get()
-            ->map(function ($database) {
+            ->get();
+
+        return $databases->map(function ($database) {
+                /** @var \Worldesports\MultiTenancy\Models\TenantDatabase $database */
                 return [
                     'id' => $database->id,
                     'name' => $database->name,
