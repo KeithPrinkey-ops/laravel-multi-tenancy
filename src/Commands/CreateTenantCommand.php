@@ -30,14 +30,16 @@ class CreateTenantCommand extends Command
 
         // Validate user exists
         $userModel = config('multi-tenancy.user_model');
-        if (!$userModel::find($userId)) {
+        if (! $userModel::find($userId)) {
             $this->error("User with ID {$userId} not found.");
+
             return self::FAILURE;
         }
 
         // Check if tenant already exists for user
         if (Tenant::where('user_id', $userId)->exists()) {
             $this->error("Tenant already exists for user ID {$userId}.");
+
             return self::FAILURE;
         }
 
@@ -49,12 +51,18 @@ class CreateTenantCommand extends Command
         $dbPassword = $this->option('db-password');
         $dbDriver = $this->option('db-driver');
 
-        if (!$dbUsername || !$dbPassword) {
+        if (! $dbUsername || ! $dbPassword) {
             $this->error('Database username and password are required.');
+
             return self::FAILURE;
         }
 
-        // Validate connection details
+        // Validate database name format
+        if (! $this->validateDatabaseName($dbName)) {
+            return self::FAILURE;
+        }
+
+        // Validate connection details format
         $validator = Validator::make([
             'driver' => $dbDriver,
             'host' => $dbHost,
@@ -63,12 +71,12 @@ class CreateTenantCommand extends Command
             'username' => $dbUsername,
             'password' => $dbPassword,
         ], [
-            'driver' => 'required|string',
-            'host' => 'required|string',
-            'port' => 'required|integer',
-            'database' => 'required|string',
-            'username' => 'required|string',
-            'password' => 'required|string',
+            'driver' => 'required|string|in:mysql,pgsql,sqlite,sqlsrv',
+            'host' => 'required|string|max:255',
+            'port' => 'required|integer|between:1,65535',
+            'database' => 'required|string|max:64|regex:/^[a-zA-Z0-9_]+$/',
+            'username' => 'required|string|max:32',
+            'password' => 'required|string|min:1',
         ]);
 
         if ($validator->fails()) {
@@ -76,6 +84,21 @@ class CreateTenantCommand extends Command
             foreach ($validator->errors()->all() as $error) {
                 $this->line("  - {$error}");
             }
+
+            return self::FAILURE;
+        }
+
+        // Test database server connection first
+        $connectionDetails = [
+            'driver' => $dbDriver,
+            'host' => $dbHost,
+            'port' => $dbPort,
+            'database' => $dbName,
+            'username' => $dbUsername,
+            'password' => $dbPassword,
+        ];
+
+        if (! $this->validateDatabaseConnection($connectionDetails)) {
             return self::FAILURE;
         }
 
@@ -125,6 +148,7 @@ class CreateTenantCommand extends Command
 
         } catch (\Exception $e) {
             $this->error("Failed to create tenant: {$e->getMessage()}");
+
             return self::FAILURE;
         }
     }
@@ -168,9 +192,11 @@ class CreateTenantCommand extends Command
             $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
 
             $this->info('✅ Database server connection successful');
+
             return true;
         } catch (\PDOException $e) {
             $this->error("❌ Database connection failed: {$e->getMessage()}");
+
             return false;
         }
     }
@@ -178,13 +204,15 @@ class CreateTenantCommand extends Command
     private function validateDatabaseName(string $dbName): bool
     {
         // Validate database name format
-        if (!preg_match('/^[a-zA-Z0-9_]+$/', $dbName)) {
+        if (! preg_match('/^[a-zA-Z0-9_]+$/', $dbName)) {
             $this->error('Database name can only contain letters, numbers, and underscores');
+
             return false;
         }
 
         if (strlen($dbName) > 64) {
             $this->error('Database name cannot exceed 64 characters');
+
             return false;
         }
 
@@ -198,12 +226,13 @@ class CreateTenantCommand extends Command
             $pdo = new \PDO($dsn, $connectionDetails['username'], $connectionDetails['password']);
             $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
 
-            $stmt = $pdo->prepare("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?");
+            $stmt = $pdo->prepare('SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?');
             $stmt->execute([$connectionDetails['database']]);
 
             return $stmt->rowCount() > 0;
         } catch (\PDOException $e) {
             $this->error("❌ Failed to check database existence: {$e->getMessage()}");
+
             return false;
         }
     }

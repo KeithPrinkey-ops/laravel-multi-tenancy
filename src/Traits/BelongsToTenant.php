@@ -2,8 +2,9 @@
 
 namespace Worldesports\MultiTenancy\Traits;
 
-use Worldesports\MultiTenancy\Facades\MultiTenancy;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Worldesports\MultiTenancy\Facades\MultiTenancy;
 
 trait BelongsToTenant
 {
@@ -12,6 +13,20 @@ trait BelongsToTenant
         static::addGlobalScope('tenant', function (Builder $builder) {
             if (MultiTenancy::hasTenant()) {
                 $builder->on(MultiTenancy::getCurrentConnectionName());
+            }
+        });
+
+        // Automatically set tenant connection on model creation
+        static::creating(function (Model $model) {
+            if (MultiTenancy::hasTenant() && MultiTenancy::getCurrentConnectionName()) {
+                $model->setConnection(MultiTenancy::getCurrentConnectionName());
+            }
+        });
+
+        // Ensure tenant connection on model retrieval
+        static::retrieved(function (Model $model) {
+            if (MultiTenancy::hasTenant() && MultiTenancy::getCurrentConnectionName()) {
+                $model->setConnection(MultiTenancy::getCurrentConnectionName());
             }
         });
     }
@@ -34,6 +49,7 @@ trait BelongsToTenant
                 $database = $tenant->databases()->first();
                 if ($database) {
                     $connectionName = MultiTenancy::setTenantDatabaseConnection($database);
+
                     return $query->on($connectionName);
                 }
             }
@@ -44,5 +60,25 @@ trait BelongsToTenant
         }
 
         return $query;
+    }
+
+    /**
+     * Bypass tenant scoping for administrative queries
+     */
+    public function scopeWithoutTenantScope(Builder $query): Builder
+    {
+        return $query->withoutGlobalScope('tenant');
+    }
+
+    /**
+     * Ensure model is always saved to the correct tenant database
+     */
+    public function save(array $options = [])
+    {
+        if (MultiTenancy::hasTenant() && MultiTenancy::getCurrentConnectionName()) {
+            $this->setConnection(MultiTenancy::getCurrentConnectionName());
+        }
+
+        return parent::save($options);
     }
 }

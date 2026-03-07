@@ -27,11 +27,56 @@ class TestCase extends Orchestra
     public function getEnvironmentSetUp($app)
     {
         config()->set('database.default', 'testing');
+        config()->set('database.connections.testing', [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+        ]);
 
-        /*
-         foreach (\Illuminate\Support\Facades\File::allFiles(__DIR__ . '/../database/migrations') as $migration) {
-            (include $migration->getRealPath())->up();
-         }
-         */
+        // Set up User model for testing - use a simple test implementation
+        config()->set('multi-tenancy.user_model', TestUser::class);
+
+        // Run migrations
+        $migration = include __DIR__.'/../database/migrations/create_tenant_table.php.stub';
+        $migration->up();
+
+        $migration = include __DIR__.'/../database/migrations/create_tenant_database.php.stub';
+        $migration->up();
+
+        $migration = include __DIR__.'/../database/migrations/create_tenant_database_metadata_table.php.stub';
+        $migration->up();
+
+        // Create users table for testing
+        \Illuminate\Support\Facades\Schema::create('users', function (\Illuminate\Database\Schema\Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('password');
+            $table->rememberToken();
+            $table->timestamps();
+        });
+    }
+}
+
+// Simple test user model - only for package testing
+class TestUser extends \Illuminate\Foundation\Auth\User
+{
+    protected $table = 'users';
+    protected $fillable = ['name', 'email', 'password'];
+
+    // Simple factory method for tests
+    public static function factory()
+    {
+        return new class {
+            public function create(array $attributes = [])
+            {
+                return TestUser::create(array_merge([
+                    'name' => 'Test User',
+                    'email' => 'test@example.com',
+                    'password' => bcrypt('password'),
+                ], $attributes));
+            }
+        };
     }
 }

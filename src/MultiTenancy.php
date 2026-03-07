@@ -1,156 +1,203 @@
 <?php
 
-    namespace Worldesports\MultiTenancy;
+namespace Worldesports\MultiTenancy;
 
-    use Worldesports\MultiTenancy\Models\Tenant;
-    use Worldesports\MultiTenancy\Models\TenantDatabase;
-    use Illuminate\Support\Facades\Config;
-    use Illuminate\Support\Facades\DB;
-    use InvalidArgumentException;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
+use Worldesports\MultiTenancy\Models\Tenant;
+use Worldesports\MultiTenancy\Models\TenantDatabase;
 
-    class MultiTenancy
+class MultiTenancy
+{
+    protected ?Tenant $tenant = null;
+
+    protected ?int $tenantId = null;
+
+    protected ?string $currentConnectionName = null;
+
+    protected static array $connectionCache = [];
+
+    protected ?string $originalConnection = null;
+
+    public function setTenant(Tenant $tenant): void
     {
-        protected ?Tenant $tenant = null;
-        protected ?int $tenantId = null;
-        protected ?string $currentConnectionName = null;
-
-        public function setTenant(Tenant $tenant): void
-        {
-            $this->tenant = $tenant;
-            $this->tenantId = $tenant->id;
-
-            $defaultDatabase = $tenant->databases()->first();
-            if ($defaultDatabase) {
-                $this->setTenantDatabaseConnection($defaultDatabase);
-                $this->switchToTenantConnection();
-            }
+        // Store original connection if not already stored
+        if (! $this->originalConnection) {
+            $this->originalConnection = Config::get('database.default');
         }
 
-        public function getTenant(): ?Tenant
-        {
-            return $this->tenant;
+        $this->tenant = $tenant;
+        $this->tenantId = $tenant->id;
+
+        $defaultDatabase = $tenant->databases()->first();
+        if ($defaultDatabase) {
+            $this->setTenantDatabaseConnection($defaultDatabase);
+            $this->switchToTenantConnection();
         }
+    }
 
-        public function getTenantId(): ?int
-        {
-            return $this->tenantId;
-        }
+    public function getTenant(): ?Tenant
+    {
+        return $this->tenant;
+    }
 
-        public function getCurrentConnectionName(): ?string
-        {
-            return $this->currentConnectionName;
-        }
+    public function getTenantId(): ?int
+    {
+        return $this->tenantId;
+    }
 
-        public function setTenantDatabaseConnection(TenantDatabase $tenantDatabase): string
-        {
-            $connectionName = 'tenant_connection_' . $tenantDatabase->id;
-            $connectionDetails = $tenantDatabase->connection_details;
+    public function getCurrentConnectionName(): ?string
+    {
+        return $this->currentConnectionName;
+    }
 
-            if (!isset($connectionDetails['driver'])) {
-                throw new InvalidArgumentException("Database driver is required.");
-            }
+    public function setTenantDatabaseConnection(TenantDatabase $tenantDatabase): string
+    {
+        $connectionName = 'tenant_connection_'.$tenantDatabase->id;
 
-            $config = [
-                'driver' => $connectionDetails['driver'] ?? 'mysql',
-                'host' => $connectionDetails['host'] ?? '127.0.0.1',
-                'port' => $connectionDetails['port'] ?? '3306',
-                'database' => $connectionDetails['database'],
-                'username' => $connectionDetails['username'],
-                'password' => $connectionDetails['password'],
-                'charset' => $connectionDetails['charset'] ?? 'utf8mb4',
-                'collation' => $connectionDetails['collation'] ?? 'utf8mb4_unicode_ci',
-                'prefix' => $connectionDetails['prefix'] ?? '',
-                'strict' => $connectionDetails['strict'] ?? true,
-                'engine' => $connectionDetails['engine'] ?? null,
-            ];
-
-            Config::set("database.connections.$connectionName", $config);
-            DB::purge($connectionName);
-
+        // Check if connection is already cached
+        if (isset(static::$connectionCache[$connectionName])) {
             $this->currentConnectionName = $connectionName;
+
             return $connectionName;
         }
 
-        public function switchToTenantConnection(): void
-        {
-            if ($this->currentConnectionName) {
-                Config::set('database.default', $this->currentConnectionName);
-                DB::reconnect($this->currentConnectionName);
-            }
+        $connectionDetails = $tenantDatabase->connection_details;
+
+        if (! isset($connectionDetails['driver'])) {
+            throw new InvalidArgumentException('Database driver is required.');
         }
 
-        public function switchToMainConnection(): void
-        {
-            $mainConnection = config('multi-tenancy.main_connection', 'mysql');
-            Config::set('database.default', $mainConnection);
-            DB::reconnect($mainConnection);
-            $this->currentConnectionName = null;
+        $config = [
+            'driver' => $connectionDetails['driver'] ?? 'mysql',
+            'host' => $connectionDetails['host'] ?? '127.0.0.1',
+            'port' => $connectionDetails['port'] ?? '3306',
+            'database' => $connectionDetails['database'],
+            'username' => $connectionDetails['username'],
+            'password' => $connectionDetails['password'],
+            'charset' => $connectionDetails['charset'] ?? 'utf8mb4',
+            'collation' => $connectionDetails['collation'] ?? 'utf8mb4_unicode_ci',
+            'prefix' => $connectionDetails['prefix'] ?? '',
+            'strict' => $connectionDetails['strict'] ?? true,
+            'engine' => $connectionDetails['engine'] ?? null,
+        ];
+
+        Config::set("database.connections.$connectionName", $config);
+
+        // Purge existing connection if it exists
+        if (DB::getConnection($connectionName)) {
+            DB::purge($connectionName);
         }
 
-        public function resetTenant(): void
-        {
-            $this->switchToMainConnection();
-            $this->tenant = null;
-            $this->tenantId = null;
-            $this->currentConnectionName = null;
-        }
+        // Cache the connection
+        static::$connectionCache[$connectionName] = true;
 
-        public function getTenantDatabases(): array
-        {
-            if (!$this->tenant) {
-                return [];
-            }
-           return $this->tenant->databases()
-               ->with('metadata')
-               ->get()
-               ->map(function ($database) {
-                   return [
-                       'id' => $database->id,
-                       'name' => $database->name,
-                       'connection_details' => $database->connection_details,
-                       'metadata' => $database->metadata->pluck('value', 'key')->toArray(),
-                   ];
-               })
-               ->toArray();
-        }
+        $this->currentConnectionName = $connectionName;
 
-        public function hasTenant(): bool
-        {
-            return $this->tenant !== null;
-        }
+        return $connectionName;
+    }
 
-        public function ensureTenantIsSet(): void
-        {
-            if (!$this->tenant) {
-                throw new InvalidArgumentException("Tenant is not set.");
-            }
-        }
-
-        public function getTenantDatabaseMetadata(): array
-        {
-            if (!$this->tenant) {
-                return [];
-            }
-
-            $metaData = [];
-            foreach ($this->tenant->databases as $database) {
-                $connectionDetails = $database->connection_details;
-                $metadata = $database->metadata->pluck('value', 'key')->toArray();
-
-                $metaData[] = [
-                    'id' => $database->id,
-                    'name' => $database->name,
-                    'connection_info' => [
-                        'driver' => $connectionDetails['driver'] ?? null,
-                        'host' => $connectionDetails['host'] ?? null,
-                        'port' => $connectionDetails['port'] ?? null,
-                        'database' => $connectionDetails['database'] ?? null,
-                        'username' => $connectionDetails['username'] ?? null,
-                    ],
-                    'metadata' => $metadata,
-                    'created_at' => $database->created_at,
-                ];
-            }
-            return $metaData;
+    public function switchToTenantConnection(): void
+    {
+        if ($this->currentConnectionName) {
+            Config::set('database.default', $this->currentConnectionName);
+            DB::reconnect($this->currentConnectionName);
         }
     }
+
+    public function switchToMainConnection(): void
+    {
+        $mainConnection = $this->originalConnection ?? config('multi-tenancy.main_connection', 'mysql');
+        Config::set('database.default', $mainConnection);
+        DB::reconnect($mainConnection);
+        $this->currentConnectionName = null;
+    }
+
+    public function purgeConnections(): void
+    {
+        foreach (array_keys(static::$connectionCache) as $connectionName) {
+            try {
+                DB::purge($connectionName);
+            } catch (\Exception $e) {
+                // Ignore purge errors
+            }
+        }
+        static::$connectionCache = [];
+    }
+
+    public function resetTenant(): void
+    {
+        $this->switchToMainConnection();
+        $this->tenant = null;
+        $this->tenantId = null;
+        $this->currentConnectionName = null;
+        $this->purgeConnections();
+    }
+
+    public function getTenantDatabases(): array
+    {
+        if (! $this->tenant) {
+            return [];
+        }
+
+        return $this->tenant->databases()
+            ->with('metadata')
+            ->get()
+            ->map(function ($database) {
+                return [
+                    'id' => $database->id,
+                    'name' => $database->name,
+                    'connection_details' => $database->connection_details,
+                    'metadata' => $database->metadata->pluck('value', 'key')->toArray(),
+                ];
+            })
+            ->toArray();
+    }
+
+    public function hasTenant(): bool
+    {
+        return $this->tenant !== null;
+    }
+
+    public function ensureTenantIsSet(): void
+    {
+        if (! $this->tenant) {
+            throw new InvalidArgumentException('Tenant is not set.');
+        }
+    }
+
+    public function getTenantDatabaseMetadata(): array
+    {
+        if (! $this->tenant) {
+            return [];
+        }
+
+        $metaData = [];
+        foreach ($this->tenant->databases as $database) {
+            $connectionDetails = $database->connection_details;
+            $metadata = $database->metadata->pluck('value', 'key')->toArray();
+
+            $metaData[] = [
+                'id' => $database->id,
+                'name' => $database->name,
+                'connection_info' => [
+                    'driver' => $connectionDetails['driver'] ?? null,
+                    'host' => $connectionDetails['host'] ?? null,
+                    'port' => $connectionDetails['port'] ?? null,
+                    'database' => $connectionDetails['database'] ?? null,
+                    'username' => $connectionDetails['username'] ?? null,
+                ],
+                'metadata' => $metadata,
+                'created_at' => $database->created_at,
+            ];
+        }
+
+        return $metaData;
+    }
+
+    public function echoPhrase(string $phrase): string
+    {
+        return $phrase;
+    }
+}
