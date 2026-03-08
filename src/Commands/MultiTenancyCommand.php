@@ -124,8 +124,24 @@ class MultiTenancyCommand extends Command
             foreach ($tenant->databases as $database) {
                 $this->line("  • {$database->name} (ID: {$database->id})");
                 $details = $database->connection_details;
-                $this->line("    Host: {$details['host']}:{$details['port']}");
-                $this->line("    Database: {$details['database']}");
+
+                // Handle different driver configurations
+                $host = $details['host'] ?? null;
+                $port = $details['port'] ?? null;
+                $databaseName = $details['database'] ?? null;
+                $driver = $details['driver'] ?? 'unknown';
+
+                $this->line("    Driver: {$driver}");
+
+                if ($host !== null && $port !== null) {
+                    $this->line("    Host: {$host}:{$port}");
+                } elseif ($host !== null) {
+                    $this->line("    Host: {$host}");
+                }
+
+                if ($databaseName !== null) {
+                    $this->line("    Database: {$databaseName}");
+                }
             }
         }
 

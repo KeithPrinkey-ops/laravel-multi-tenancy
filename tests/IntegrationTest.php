@@ -21,16 +21,16 @@ class IntegrationTest extends TestCase
     {
         parent::setUp();
 
-        // Create the tenant tables
-        $this->runPackageMigrations();
-
-        // Create a test user table
+        // Create a test user table FIRST (before package migrations with FK constraints)
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('name');
             $table->string('email')->unique();
             $table->timestamps();
         });
+
+        // Create the tenant tables
+        $this->runPackageMigrations();
 
         // Create test user
         DB::table('users')->insert([
@@ -91,14 +91,31 @@ class IntegrationTest extends TestCase
         // Create tenant
         $tenant = $this->createTenantWithDatabase();
 
-        // Create user model mock
-        $user = (object) ['id' => 1];
+        // Get the actual user from the database
+        $user = DB::table('users')->where('id', 1)->first();
+
+        // Create a proper Authenticatable user instance
+        $authenticatableUser = new class($user) implements \Illuminate\Contracts\Auth\Authenticatable {
+            private $user;
+
+            public function __construct($user) {
+                $this->user = $user;
+            }
+
+            public function getAuthIdentifierName() { return 'id'; }
+            public function getAuthIdentifier() { return $this->user->id; }
+            public function getAuthPassword() { return ''; }
+            public function getRememberToken() { return null; }
+            public function setRememberToken($value) {}
+            public function getRememberTokenName() { return null; }
+            public function getAuthPasswordName() { return 'password'; }
+        };
 
         // Ensure no tenant is set initially
         expect(MultiTenancy::hasTenant())->toBeFalse();
 
         // Fire login event
-        Event::dispatch(new Login('web', $user, false));
+        Event::dispatch(new Login('web', $authenticatableUser, false));
 
         // Check that tenant was automatically set
         expect(MultiTenancy::hasTenant())->toBeTrue();
@@ -254,6 +271,8 @@ class IntegrationTest extends TestCase
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->string('name');
+            $table->string('domain')->nullable();
+            $table->string('subdomain')->nullable();
             $table->timestamps();
         });
 
@@ -262,6 +281,7 @@ class IntegrationTest extends TestCase
             $table->id();
             $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
             $table->string('name');
+            $table->boolean('is_primary')->default(false);
             $table->json('connection_details');
             $table->timestamps();
         });

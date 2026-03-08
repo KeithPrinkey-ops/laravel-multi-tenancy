@@ -20,6 +20,14 @@ class TraitTest extends TestCase
     {
         parent::setUp();
 
+        // Create users table FIRST (before package migrations with FK constraints)
+        Schema::create('users', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->timestamps();
+        });
+
         $this->runPackageMigrations();
 
         // Create a test model table that would use the trait
@@ -27,14 +35,6 @@ class TraitTest extends TestCase
             $table->id();
             $table->string('title');
             $table->text('content');
-            $table->timestamps();
-        });
-
-        // Create users table
-        Schema::create('users', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('email')->unique();
             $table->timestamps();
         });
 
@@ -137,6 +137,7 @@ class TraitTest extends TestCase
             $table->id();
             $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
             $table->string('name');
+            $table->boolean('is_primary')->default(false);
             $table->json('connection_details');
             $table->timestamps();
         });

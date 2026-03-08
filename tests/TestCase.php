@@ -36,6 +36,14 @@ class TestCase extends Orchestra
         // Set up User model for testing - use a simple test implementation
         config()->set('multi-tenancy.user_model', TestUser::class);
 
+        // Create users table FIRST before package migrations (to satisfy FK constraints)
+        \Illuminate\Support\Facades\Schema::create('users', function (\Illuminate\Database\Schema\Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->timestamps();
+        });
+
         // Run migrations
         $migration = include __DIR__.'/../database/migrations/create_tenant_table.php.stub';
         $migration->up();
@@ -46,16 +54,12 @@ class TestCase extends Orchestra
         $migration = include __DIR__.'/../database/migrations/create_tenant_database_metadata_table.php.stub';
         $migration->up();
 
-        // Create users table for testing
-        \Illuminate\Support\Facades\Schema::create('users', function (\Illuminate\Database\Schema\Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
-            $table->rememberToken();
-            $table->timestamps();
-        });
+        // Run new migrations
+        $migration = include __DIR__.'/../database/migrations/add_is_primary_to_tenant_databases_table.php.stub';
+        $migration->up();
+
+        $migration = include __DIR__.'/../database/migrations/add_automatic_detection_fields_to_tenants_table.php.stub';
+        $migration->up();
     }
 }
 

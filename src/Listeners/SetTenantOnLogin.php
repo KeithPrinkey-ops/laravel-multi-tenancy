@@ -22,7 +22,7 @@ class SetTenantOnLogin
         }
 
         // Strategy 3: Subdomain detection (automatic!)
-        if (!$tenant && config('multi-tenancy.auto_detect_by_subdomain', false)) {
+        if (!$tenant && config('multi-tenancy.subdomain.enabled', false)) {
             $tenant = $this->findTenantBySubdomain();
         }
 
@@ -77,9 +77,11 @@ class SetTenantOnLogin
         $tenant = Tenant::where('domain', $domain)->first();
 
         if ($tenant) {
-            // Auto-assign user to this tenant for faster future lookups
-            $tenant->update(['user_id' => $user->id]);
-            \Log::info("Auto-mapped user {$user->id} to tenant {$tenant->id} via email domain: {$domain}");
+            // NOTE: Do not change tenant ownership/user_id based solely on email domain.
+            // We only use the domain to *discover* the tenant, not to persist any ownership mapping.
+            /** @var \Illuminate\Database\Eloquent\Model $user */
+            $userId = $user instanceof \Illuminate\Database\Eloquent\Model ? $user->getKey() : 'unknown';
+            \Log::info("Auto-detected tenant {$tenant->id} for user {$userId} via email domain: {$domain}");
         }
 
         return $tenant;
@@ -91,6 +93,14 @@ class SetTenantOnLogin
     private function findTenantBySubdomain(): ?Tenant
     {
         $host = request()->getHost();
+
+        // Validate against allowed base domain to prevent Host header attacks
+        $baseDomain = config('multi-tenancy.subdomain.base_domain');
+        if ($baseDomain && !str_ends_with($host, $baseDomain)) {
+            \Log::warning("Invalid host header rejected for tenant detection: {$host}");
+            return null;
+        }
+
         $subdomain = explode('.', $host)[0];
 
         // Skip if no subdomain or excluded subdomain

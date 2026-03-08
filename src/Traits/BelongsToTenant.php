@@ -12,7 +12,10 @@ trait BelongsToTenant
     {
         static::addGlobalScope('tenant', function (Builder $builder) {
             if (MultiTenancy::hasTenant()) {
-                $builder->on(MultiTenancy::getCurrentConnectionName());
+                $connectionName = MultiTenancy::getCurrentConnectionName();
+                if ($connectionName) {
+                    $builder->getModel()->setConnection($connectionName);
+                }
             }
         });
 
@@ -49,14 +52,18 @@ trait BelongsToTenant
                 $database = $tenant->databases()->first();
                 if ($database) {
                     $connectionName = MultiTenancy::setTenantDatabaseConnection($database);
-
-                    return $query->on($connectionName);
+                    $query->getModel()->setConnection($connectionName);
+                    return $query->getModel()->newQuery();
                 }
             }
         }
 
         if (MultiTenancy::hasTenant()) {
-            return $query->on(MultiTenancy::getCurrentConnectionName());
+            $connectionName = MultiTenancy::getCurrentConnectionName();
+            if ($connectionName) {
+                $query->getModel()->setConnection($connectionName);
+                return $query->getModel()->newQuery();
+            }
         }
 
         return $query;

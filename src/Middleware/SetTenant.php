@@ -46,7 +46,12 @@ class SetTenant
                 return response()->json(['error' => 'No tenant assigned to user'], 403);
 
             case 'redirect':
-                return redirect()->route('tenant.setup')->with('error', 'Please contact support to set up your tenant.');
+                $routeName = config('multi-tenancy.tenant_setup_route', 'tenant.setup');
+                if ($routeName && \Illuminate\Support\Facades\Route::has($routeName)) {
+                    return redirect()->route($routeName)->with('error', 'Please contact support to set up your tenant.');
+                }
+                // Fallback to back or home if route doesn't exist
+                return redirect()->back()->with('error', 'Please contact support to set up your tenant.');
 
             case 'ignore':
             default:

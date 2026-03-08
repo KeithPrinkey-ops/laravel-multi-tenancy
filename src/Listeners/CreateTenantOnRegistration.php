@@ -29,7 +29,8 @@ class CreateTenantOnRegistration
         try {
             // Create tenant with default name
             $userName = $user->getAttribute('name') ?? 'User';
-            $tenantName = config('multi-tenancy.default_tenant_name', 'Tenant for '.$userName);
+            $tenantNameTemplate = config('multi-tenancy.default_tenant_name', 'Tenant for :name');
+            $tenantName = str_replace(':name', $userName, $tenantNameTemplate);
 
             Tenant::create([
                 'user_id' => $user->getKey(),

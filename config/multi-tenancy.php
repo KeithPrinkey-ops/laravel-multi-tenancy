@@ -36,8 +36,18 @@ return [
     // Auto-detect tenant by email domain (user@company.com -> Company tenant)
     'auto_detect_by_email' => true,
 
-    // Auto-detect tenant by subdomain (tenant1.app.com -> tenant1)
-    'auto_detect_by_subdomain' => false,
+    // Subdomain detection settings
+    'subdomain' => [
+        // Enable automatic tenant detection by subdomain (tenant1.app.com -> tenant1)
+        'enabled' => false,
+
+        // Base domain for subdomain validation (prevents Host header attacks)
+        // Set this to your application's base domain, e.g., 'example.com'
+        'base_domain' => null,
+
+        // Subdomains to exclude from tenant detection
+        'excluded' => ['www', 'app', 'api', 'admin'],
+    ],
 
     // Auto-create tenant for users without existing tenant
     'auto_create_tenant' => false,
@@ -55,17 +65,6 @@ return [
     */
     'default_tenant_name' => 'Tenant for :name',
 
-    /*
-    |--------------------------------------------------------------------------
-    | Subdomain Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Configuration for subdomain-based tenant detection.
-    |
-    */
-    'subdomain' => [
-        'excluded' => ['www', 'app', 'api', 'admin'], // Subdomains to ignore
-    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -92,4 +91,17 @@ return [
         'log_tenant_switches' => true, // Log when tenants are switched
         'max_connection_attempts' => 3, // Max attempts for database connections
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Routes
+    |--------------------------------------------------------------------------
+    |
+    | Route names used by the package.
+    |
+    */
+
+    // Route to redirect users without a tenant (used by SetTenant middleware)
+    // Set to null to disable redirection
+    'tenant_setup_route' => null,
 ];
