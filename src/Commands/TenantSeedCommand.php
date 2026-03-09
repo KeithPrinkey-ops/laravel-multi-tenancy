@@ -10,62 +10,50 @@ use Worldesports\MultiTenancy\Facades\MultiTenancy;
 use Worldesports\MultiTenancy\Models\Tenant;
 use Worldesports\MultiTenancy\Models\TenantDatabase;
 
-class TenantMigrateCommand extends Command
+class TenantSeedCommand extends Command
 {
-    public $signature = 'tenant:migrate
-                        {--tenant= : Specific tenant ID to migrate}
-                        {--database= : Specific database ID to migrate}
-                        {--fresh : Drop all tables and re-run migrations}
-                        {--seed : Run seeders after migrations}
-                        {--rollback : Rollback the last batch of migrations}
-                        {--status : Show migration status}';
+    public $signature = 'tenant:seed
+                        {--tenant= : Specific tenant ID to seed}
+                        {--database= : Specific database ID to seed}
+                        {--class= : Specific seeder class to run}';
 
-    public $description = 'Run migrations on tenant databases';
+    public $description = 'Run database seeders on tenant databases';
 
     public function handle(): int
     {
         $tenantId = $this->option('tenant');
         $databaseId = $this->option('database');
+        $seederClass = $this->option('class');
 
         try {
             if ($databaseId) {
-
                 $database = TenantDatabase::find($databaseId);
-
                 if (! $database instanceof TenantDatabase) {
-
                     $this->error("Database with ID $databaseId not found.");
 
                     return self::FAILURE;
-
                 }
 
-                return $this->runMigrationForDatabase($database);
-
+                return $this->runSeedForDatabase($database, $seederClass);
             }
 
             if ($tenantId) {
-
                 $tenant = Tenant::find($tenantId);
-
                 if (! $tenant instanceof Tenant) {
-
                     $this->error("Tenant with ID $tenantId not found.");
 
                     return self::FAILURE;
-
                 }
 
-                return $this->runMigrationsForTenant($tenant);
-
+                return $this->runSeedsForTenant($tenant, $seederClass);
             }
 
             // Run for all tenants
-            $this->info('Running migrations for all tenants...');
+            $this->info('Running seeders for all tenants...');
             $tenants = Tenant::with('databases')->get();
 
             foreach ($tenants as $tenant) {
-                $result = $this->runMigrationsForTenant($tenant);
+                $result = $this->runSeedsForTenant($tenant, $seederClass);
                 if ($result === self::FAILURE) {
                     return self::FAILURE;
                 }
@@ -74,19 +62,19 @@ class TenantMigrateCommand extends Command
             return self::SUCCESS;
 
         } catch (Exception $e) {
-            $this->error("Migration failed: {$e->getMessage()}");
+            $this->error("Seeding failed: {$e->getMessage()}");
 
             return self::FAILURE;
         }
     }
 
-    private function runMigrationsForTenant(Tenant $tenant): int
+    private function runSeedsForTenant(Tenant $tenant, ?string $seederClass = null): int
     {
-        $this->info("Running migrations for tenant: $tenant->name (ID: $tenant->id)");
+        $this->info("Running seeders for tenant: $tenant->name (ID: $tenant->id)");
 
         /** @var TenantDatabase $database */
         foreach ($tenant->databases as $database) {
-            $result = $this->runMigrationForDatabase($database);
+            $result = $this->runSeedForDatabase($database, $seederClass);
             if ($result === self::FAILURE) {
                 return self::FAILURE;
             }
@@ -95,7 +83,7 @@ class TenantMigrateCommand extends Command
         return self::SUCCESS;
     }
 
-    private function runMigrationForDatabase(TenantDatabase $database): int
+    private function runSeedForDatabase(TenantDatabase $database, ?string $seederClass = null): int
     {
         $this->info("  Processing database: $database->name");
 
@@ -106,31 +94,20 @@ class TenantMigrateCommand extends Command
             // Test connection
             DB::connection($connectionName)->getPdo();
 
-            // Determine migration command
-            $command = 'migrate';
+            // Prepare seeder options
             $options = ['--database' => $connectionName, '--force' => true];
 
-            if ($this->option('fresh')) {
-                $command = 'migrate:fresh';
-            } elseif ($this->option('rollback')) {
-                $command = 'migrate:rollback';
-            } elseif ($this->option('status')) {
-                $command = 'migrate:status';
+            if ($seederClass) {
+                $options['--class'] = $seederClass;
             }
 
-            // Run migration
-            $exitCode = Artisan::call($command, $options);
+            // Run seeder
+            $exitCode = Artisan::call('db:seed', $options);
 
             if ($exitCode === 0) {
-                $this->info("    ✅ Migrations completed for $database->name");
-
-                // Run seeders if requested
-                if ($this->option('seed')) {
-                    $this->info("    🌱 Running seeders for $database->name");
-                    Artisan::call('db:seed', ['--database' => $connectionName, '--force' => true]);
-                }
+                $this->info("    ✅ Seeders completed for $database->name");
             } else {
-                $this->error("    ❌ Migration failed for $database->name");
+                $this->error("    ❌ Seeding failed for $database->name");
                 $this->line('    '.Artisan::output());
 
                 return self::FAILURE;

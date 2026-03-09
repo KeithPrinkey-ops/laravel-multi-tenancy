@@ -13,8 +13,7 @@
     failOnEmptyTestSuite="true"
     beStrictAboutOutputDuringTests="true"
     cacheDirectory=".phpunit.cache"
-    backupStaticProperties="false"
->
+    backupStaticProperties="false">
     <testsuites>
         <testsuite name="Worldesports Test Suite">
             <directory>tests</directory>
